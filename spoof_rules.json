@@ -1,0 +1,43 @@
+{
+  "enabled": true,
+  "rules": [
+    {
+      "name": "Generic Pixel",
+      "condition": {
+        "app": "com.google.android.gms"
+      },
+      "spoof": {
+        "ro.product.model": "Pixel 6",
+        "ro.build.fingerprint": "google/oriole/oriole:12.0.0/SD1A:user/release-keys",
+        "ro.product.brand": "google"
+      }
+    },
+    {
+      "name": "Samsung Galaxy",
+      "condition": {
+        "app": "com.samsung.android.app.telephonyui"
+      },
+      "spoof": {
+        "ro.product.model": "SM-S901B",
+        "ro.product.brand": "samsung",
+        "ro.build.fingerprint": "samsung/b0q/b0q:13/TP1A.220624.014/S901BXXS3CVE7:user/release-keys"
+      }
+    },
+    {
+      "name": "Xiaomi POCO",
+      "condition": {
+        "app": "com.miui"
+      },
+      "spoof": {
+        "ro.product.model": "POCO F3",
+        "ro.product.brand": "Xiaomi",
+        "ro.build.fingerprint": "Xiaomi/alioth/alioth:11/RKQ1.200826.004/V12.5.4.0.RJGMIXM:user/release-keys"
+      }
+    }
+  ],
+  "fallback": {
+    "ro.build.tags": "release-keys",
+    "ro.build.type": "user",
+    "ro.debuggable": "0"
+  }
+}
