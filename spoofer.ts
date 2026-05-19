@@ -1,98 +1,84 @@
-import { execSync } from "child_process";
+import * as fs from 'fs';
+import * as path from 'path';
 
-interface DeviceProps {
-  brand: string;
+interface DeviceProfile {
   model: string;
+  manufacturer: string;
   device: string;
-  buildTags: string;
   fingerprint: string;
-  serial: string;
+  buildTags: string;
+  securityPatch: string;
+  hardwareSerial: string;
 }
 
-class FingerprintSpoofer {
-  private props: DeviceProps;
+class DeviceSpoofing {
+  private profiles: Map<string, DeviceProfile> = new Map();
 
   constructor() {
-    this.props = this.readDeviceProps();
+    this.loadProfiles();
   }
 
-  private adb(cmd: string): string {
-    try {
-      return execSync(`adb shell ${cmd}`, { encoding: "utf-8" }).trim();
-    } catch {
-      return "";
+  private loadProfiles() {
+    const profiles: DeviceProfile[] = [
+      {
+        model: "Pixel 8 Pro",
+        manufacturer: "Google",
+        device: "husky",
+        fingerprint: "google/husky/husky:15/AP1A.240305.019:15.0.0_release",
+        buildTags: "release-keys",
+        securityPatch: "2024-03-05",
+        hardwareSerial: "2Y4250Z2X7",
+      },
+      {
+        model: "Galaxy S24",
+        manufacturer: "Samsung",
+        device: "dm3q",
+        fingerprint: "samsung/dm3qxq/dm3q:14/UP1A.231105.001:1234",
+        buildTags: "release-keys",
+        securityPatch: "2024-03-01",
+        hardwareSerial: "R9YT70C8X2T",
+      },
+    ];
+
+    for (const p of profiles) {
+      this.profiles.set(p.device, p);
     }
   }
 
-  private readDeviceProps(): DeviceProps {
-    return {
-      brand: this.adb("getprop ro.product.brand"),
-      model: this.adb("getprop ro.product.model"),
-      device: this.adb("getprop ro.product.device"),
-      buildTags: this.adb("getprop ro.build.tags"),
-      fingerprint: this.adb("getprop ro.build.fingerprint"),
-      serial: this.adb("getprop ro.serialno"),
-    };
-  }
+  public spoof(device: string, propName: string): string | null {
+    const profile = this.profiles.get(device);
+    if (!profile) return null;
 
-  public generateGooglePixel(year: number = 2024): void {
-    const models: { [key: number]: string } = {
-      2023: "pixel-7-pro",
-      2024: "pixel-9-pro",
-      2025: "pixel-10-pro",
-    };
-    const model = models[year] || models[2024];
-    this.spoof(model);
-  }
-
-  public generateSamsung(series: string = "s24"): void {
-    const seriesMap: { [key: string]: string } = {
-      s24: "samsung-s24-ultra",
-      s25: "samsung-s25-ultra",
-    };
-    this.spoof(seriesMap[series] || "samsung-s24-ultra");
-  }
-
-  private spoof(target: string): void {
-    console.log(`
-🎭 Fingerprint Spoofer → ${target}`);
-    const spoofProps: { [key: string]: string } = {
-      "ro.product.brand": "Google",
-      "ro.product.model": target,
-      "ro.build.fingerprint": `google/${target}:14:BUILD.TP1A.220624.014:abcdef:user:keys`,
-      "ro.build.tags": "release-keys",
+    const propMap: Record<string, string> = {
+      "ro.product.model": profile.model,
+      "ro.product.manufacturer": profile.manufacturer,
+      "ro.product.device": profile.device,
+      "ro.build.fingerprint": profile.fingerprint,
+      "ro.build.tags": profile.buildTags,
+      "ro.build.version.security_patch": profile.securityPatch,
+      "ro.serialno": profile.hardwareSerial,
     };
 
-    for (const [key, val] of Object.entries(spoofProps)) {
-      this.adb(`setprop ${key} "${val}"`);
-      console.log(`  ✓ ${key} = ${val}`);
-    }
-    console.log("✅ Reboot for changes to take effect");
+    return propMap[propName] || null;
   }
 
-  public getStatus(): void {
-    console.log(`\n📱 Current Fingerprint:`);
-    console.log(`  Brand: ${this.props.brand}`);
-    console.log(`  Model: ${this.props.model}`);
-    console.log(`  Device: ${this.props.device}`);
-    console.log(`  Serial: ${this.props.serial}`);
-    console.log(`  Fingerprint: ${this.props.fingerprint}`);
+  public listProfiles(): DeviceProfile[] {
+    return Array.from(this.profiles.values());
   }
 }
 
-const spoofer = new FingerprintSpoofer();
-const cmd = process.argv[2];
-
-switch (cmd) {
-  case "pixel":
-    spoofer.generateGooglePixel(2024);
-    break;
-  case "samsung":
-    spoofer.generateSamsung("s24");
-    break;
-  case "status":
-    spoofer.getStatus();
-    break;
-  default:
-    console.log("Usage: npx ts-node spoofer.ts [pixel|samsung|status]");
+// CLI usage
+const spoofer = new DeviceSpoofing();
+if (process.argv.length > 2) {
+  const device = process.argv[2];
+  const prop = process.argv[3] || "ro.build.fingerprint";
+  const value = spoofer.spoof(device, prop);
+  console.log(value || "Unknown property");
+} else {
+  console.log("Usage: ts-node spoofer.ts <device> [property]");
+  console.log("
+Available devices:");
+  spoofer.listProfiles().forEach(p => {
+    console.log(`  ${p.device} — ${p.model}`);
+  });
 }
