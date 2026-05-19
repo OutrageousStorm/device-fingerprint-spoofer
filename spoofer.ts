@@ -1,116 +1,98 @@
-/**
- * fingerprint-spoofer.ts
- * Spoof Android device fingerprint to pass hardware attestation
- * Requires: Magisk + PlayIntegrityFix module
- * This generates a valid-looking spoofed fingerprint string
- */
+import { execSync } from "child_process";
 
-export interface DeviceFingerprint {
-    brand: string;
-    device: string;
-    product: string;
-    model: string;
-    buildId: string;
-    buildFingerprint: string;
+interface DeviceProps {
+  brand: string;
+  model: string;
+  device: string;
+  buildTags: string;
+  fingerprint: string;
+  serial: string;
 }
 
-const REAL_DEVICES: DeviceFingerprint[] = [
-    {
-        brand: "google",
-        device: "shiba",
-        product: "shiba",
-        model: "Pixel 8",
-        buildId: "AP3A.240905.015",
-        buildFingerprint: "google/shiba/shiba:15/AP3A.240905.015:release-keys"
-    },
-    {
-        brand: "google",
-        device: "husky",
-        product: "husky",
-        model: "Pixel 8 Pro",
-        buildId: "AP3A.240905.015",
-        buildFingerprint: "google/husky/husky:15/AP3A.240905.015:release-keys"
-    },
-    {
-        brand: "google",
-        device: "akita",
-        product: "akita",
-        model: "Pixel 8a",
-        buildId: "AP3A.240905.015",
-        buildFingerprint: "google/akita/akita:15/AP3A.240905.015:release-keys"
-    },
-    {
-        brand: "google",
-        device: "panther",
-        product: "panther",
-        model: "Pixel 7",
-        buildId: "TQ1D.230105.001",
-        buildFingerprint: "google/panther/panther:13/TQ1D.230105.001:release-keys"
-    },
-    {
-        brand: "samsung",
-        device: "dm1q",
-        product: "dm1q",
-        model: "Galaxy S23",
-        buildId: "TP1A.220624.014",
-        buildFingerprint: "samsung/dm1q/dm1q:13/TP1A.220624.014:release-keys"
-    },
-];
+class FingerprintSpoofer {
+  private props: DeviceProps;
 
-export function getRandomDevice(): DeviceFingerprint {
-    return REAL_DEVICES[Math.floor(Math.random() * REAL_DEVICES.length)];
-}
+  constructor() {
+    this.props = this.readDeviceProps();
+  }
 
-export function generateSpoofedProps(baseDevice: DeviceFingerprint): Record<string, string> {
+  private adb(cmd: string): string {
+    try {
+      return execSync(`adb shell ${cmd}`, { encoding: "utf-8" }).trim();
+    } catch {
+      return "";
+    }
+  }
+
+  private readDeviceProps(): DeviceProps {
     return {
-        "ro.build.fingerprint": baseDevice.buildFingerprint,
-        "ro.build.id": baseDevice.buildId,
-        "ro.build.product": baseDevice.product,
-        "ro.product.brand": baseDevice.brand,
-        "ro.product.device": baseDevice.device,
-        "ro.product.model": baseDevice.model,
-        "ro.build.tags": "release-keys",
-        "ro.build.version.release": "15",
-        "ro.build.version.sdk": "34",
-        "ro.secure": "1",
-        "ro.debuggable": "0",
-        "ro.boot.verifiedbootstate": "green",
-        "ro.boot.serialno": generateRandomSerial(),
+      brand: this.adb("getprop ro.product.brand"),
+      model: this.adb("getprop ro.product.model"),
+      device: this.adb("getprop ro.product.device"),
+      buildTags: this.adb("getprop ro.build.tags"),
+      fingerprint: this.adb("getprop ro.build.fingerprint"),
+      serial: this.adb("getprop ro.serialno"),
     };
+  }
+
+  public generateGooglePixel(year: number = 2024): void {
+    const models: { [key: number]: string } = {
+      2023: "pixel-7-pro",
+      2024: "pixel-9-pro",
+      2025: "pixel-10-pro",
+    };
+    const model = models[year] || models[2024];
+    this.spoof(model);
+  }
+
+  public generateSamsung(series: string = "s24"): void {
+    const seriesMap: { [key: string]: string } = {
+      s24: "samsung-s24-ultra",
+      s25: "samsung-s25-ultra",
+    };
+    this.spoof(seriesMap[series] || "samsung-s24-ultra");
+  }
+
+  private spoof(target: string): void {
+    console.log(`
+🎭 Fingerprint Spoofer → ${target}`);
+    const spoofProps: { [key: string]: string } = {
+      "ro.product.brand": "Google",
+      "ro.product.model": target,
+      "ro.build.fingerprint": `google/${target}:14:BUILD.TP1A.220624.014:abcdef:user:keys`,
+      "ro.build.tags": "release-keys",
+    };
+
+    for (const [key, val] of Object.entries(spoofProps)) {
+      this.adb(`setprop ${key} "${val}"`);
+      console.log(`  ✓ ${key} = ${val}`);
+    }
+    console.log("✅ Reboot for changes to take effect");
+  }
+
+  public getStatus(): void {
+    console.log(`\n📱 Current Fingerprint:`);
+    console.log(`  Brand: ${this.props.brand}`);
+    console.log(`  Model: ${this.props.model}`);
+    console.log(`  Device: ${this.props.device}`);
+    console.log(`  Serial: ${this.props.serial}`);
+    console.log(`  Fingerprint: ${this.props.fingerprint}`);
+  }
 }
 
-function generateRandomSerial(): string {
-    // Format: GooglePixel8 format is like "12A3B4C5"
-    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    let serial = "";
-    for (let i = 0; i < 8; i++) {
-        serial += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return serial;
-}
+const spoofer = new FingerprintSpoofer();
+const cmd = process.argv[2];
 
-export function generateMagiskModule(device: DeviceFingerprint): string {
-    const props = generateSpoofedProps(device);
-    let moduleContent = "#!/system/bin/sh\n";
-    moduleContent += "# Fingerprint Spoofer Module for Magisk\n";
-    moduleContent += "# Auto-generated - do not edit manually\n\n";
-
-    for (const [key, value] of Object.entries(props)) {
-        moduleContent += `resetprop ${key} "${value}"\n`;
-    }
-
-    return moduleContent;
-}
-
-// CLI usage
-if (require.main === module) {
-    const device = getRandomDevice();
-    console.log("🎭 Spoofed Device Fingerprint");
-    console.log("==============================");
-    console.log(JSON.stringify(device, null, 2));
-    console.log("\nMagisk resetprop commands:");
-    const props = generateSpoofedProps(device);
-    for (const [k, v] of Object.entries(props)) {
-        console.log(`resetprop ${k} "${v}"`);
-    }
+switch (cmd) {
+  case "pixel":
+    spoofer.generateGooglePixel(2024);
+    break;
+  case "samsung":
+    spoofer.generateSamsung("s24");
+    break;
+  case "status":
+    spoofer.getStatus();
+    break;
+  default:
+    console.log("Usage: npx ts-node spoofer.ts [pixel|samsung|status]");
 }
